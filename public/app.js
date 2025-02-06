@@ -94,7 +94,11 @@ async function performSearch(query) {
 
     try {
         const idToken = await currentUser.getIdToken();
-        const response = await fetch(`/api/interests?query=${encodeURIComponent(query)}`, {
+        const apiUrl = window.location.hostname === 'localhost' 
+            ? `http://localhost:3001/api/interests?query=${encodeURIComponent(query)}`
+            : `/api/interests?query=${encodeURIComponent(query)}`;
+            
+        const response = await fetch(apiUrl, {
             headers: {
                 'Authorization': idToken
             }
