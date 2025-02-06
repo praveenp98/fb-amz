@@ -1,4 +1,21 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables
 .env
 .env.local
-node_modules/
+.env.*.local
+
+# Firebase
+firebase-debug.log
+firebase-debug.*.log
+.firebase/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
 .DS_Store
+Thumbs.db
