@@ -1,8 +1,6 @@
-import { config } from 'dotenv';
-import admin from 'firebase-admin';
-import axios from 'axios';
-
-config();
+const admin = require('firebase-admin');
+const axios = require('axios');
+require('dotenv').config();
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -10,7 +8,7 @@ if (!admin.apps.length) {
         admin.initializeApp({
             credential: admin.credential.cert({
                 projectId: process.env.FIREBASE_PROJECT_ID,
-                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                clientEmail: process.env.FIREBOOK_CLIENT_EMAIL,
                 privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
             }),
             storageBucket: process.env.FIREBASE_STORAGE_BUCKET
@@ -41,57 +39,57 @@ async function verifyToken(authorization) {
     }
 }
 
-export const config = {
-    runtime: 'edge',
-    regions: ['bom1'], // Mumbai region for better performance
-};
+module.exports = async (req, res) => {
+    // Log request details for debugging
+    console.log('API Request received:', {
+        method: req.method,
+        url: req.url,
+        query: req.query,
+        headers: {
+            ...req.headers,
+            authorization: req.headers.authorization ? '[REDACTED]' : undefined
+        }
+    });
 
-export default async function handler(req) {
     // Enable CORS
-    const headers = {
-        'Access-Control-Allow-Credentials': 'true',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET,OPTIONS',
-        'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization',
-        'Content-Type': 'application/json',
-    };
+    res.setHeader('Access-Control-Allow-Credentials', true);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    res.setHeader(
+        'Access-Control-Allow-Headers',
+        'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
+    );
 
     // Handle preflight request
     if (req.method === 'OPTIONS') {
-        return new Response(null, { status: 200, headers });
+        res.status(200).end();
+        return;
     }
 
     // Only allow GET requests
     if (req.method !== 'GET') {
-        return new Response(
-            JSON.stringify({ error: 'Method not allowed' }),
-            { status: 405, headers }
-        );
+        return res.status(405).json({ error: 'Method not allowed' });
     }
 
     try {
-        const url = new URL(req.url);
-        const query = url.searchParams.get('query');
+        const { query } = req.query;
 
         if (!query) {
-            return new Response(
-                JSON.stringify({ error: 'Query parameter is required' }),
-                { status: 400, headers }
-            );
+            return res.status(400).json({ error: 'Query parameter is required' });
         }
 
+        console.log('Processing search query:', query);
+
         // Verify Firebase token
-        const authorization = req.headers.get('authorization');
+        const authorization = req.headers.authorization;
         await verifyToken(authorization);
 
         const access_token = process.env.FACEBOOK_ACCESS_TOKEN;
         const ad_account_id = process.env.FACEBOOK_AD_ACCOUNT_ID;
 
         if (!access_token || !ad_account_id) {
-            return new Response(
-                JSON.stringify({ error: 'Server configuration error' }),
-                { status: 500, headers }
-            );
+            console.error('Missing required environment variables');
+            return res.status(500).json({ error: 'Server configuration error' });
         }
 
         // Search for interests
@@ -106,11 +104,10 @@ export default async function handler(req) {
             }
         });
 
+        console.log('Facebook API search response received');
+
         if (!searchResponse.data.data || searchResponse.data.data.length === 0) {
-            return new Response(
-                JSON.stringify({ data: [] }),
-                { status: 200, headers }
-            );
+            return res.json({ data: [] });
         }
 
         const results = searchResponse.data.data;
@@ -145,6 +142,7 @@ export default async function handler(req) {
                         id: result.id
                     };
                 } catch (error) {
+                    console.error('Error getting audience size for interest:', result.name, error);
                     return {
                         name: result.name || 'N/A',
                         audience_size: 0,
@@ -159,18 +157,15 @@ export default async function handler(req) {
             interests.push(...batchResults);
         }
 
-        return new Response(
-            JSON.stringify({ data: interests }),
-            { status: 200, headers }
-        );
+        console.log('Sending response with interests count:', interests.length);
+        res.json({ data: interests });
     } catch (error) {
         console.error('API Error:', error);
-        return new Response(
-            JSON.stringify({ 
-                error: 'Failed to fetch interests',
-                message: error.message
-            }),
-            { status: 500, headers }
-        );
+        const errorMessage = error.response?.data?.error?.message || error.message;
+        res.status(error.response?.status || 500).json({ 
+            error: 'Failed to fetch interests',
+            message: errorMessage,
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
-}
+};
