@@ -1,5 +1,8 @@
-const admin = require('firebase-admin');
-const axios = require('axios');
+import { config } from 'dotenv';
+import admin from 'firebase-admin';
+import axios from 'axios';
+
+config();
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -15,7 +18,6 @@ if (!admin.apps.length) {
         console.log('Firebase Admin initialized successfully');
     } catch (error) {
         console.error('Firebase Admin initialization error:', error);
-        throw error;
     }
 }
 
@@ -27,70 +29,69 @@ const axiosInstance = axios.create({
     timeout: 30000 // 30 seconds timeout
 });
 
-async function verifyToken(req) {
-    const idToken = req.headers.authorization;
-    if (!idToken) {
-        console.error('No authorization token provided');
+async function verifyToken(authorization) {
+    if (!authorization) {
         throw new Error('No token provided');
     }
     try {
-        return await admin.auth().verifyIdToken(idToken);
+        return await admin.auth().verifyIdToken(authorization);
     } catch (error) {
         console.error('Token verification failed:', error);
         throw error;
     }
 }
 
-export default async function handler(req, res) {
-    // Log request details
-    console.log('API Request received:', {
-        method: req.method,
-        query: req.query,
-        path: req.url,
-        headers: {
-            ...req.headers,
-            authorization: req.headers.authorization ? '[REDACTED]' : undefined
-        }
-    });
+export const config = {
+    runtime: 'edge',
+    regions: ['bom1'], // Mumbai region for better performance
+};
 
+export default async function handler(req) {
     // Enable CORS
-    res.setHeader('Access-Control-Allow-Credentials', true);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-    res.setHeader(
-        'Access-Control-Allow-Headers',
-        'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-    );
+    const headers = {
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET,OPTIONS',
+        'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization',
+        'Content-Type': 'application/json',
+    };
 
     // Handle preflight request
     if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
+        return new Response(null, { status: 200, headers });
     }
 
     // Only allow GET requests
     if (req.method !== 'GET') {
-        return res.status(405).json({ error: 'Method not allowed' });
+        return new Response(
+            JSON.stringify({ error: 'Method not allowed' }),
+            { status: 405, headers }
+        );
     }
 
     try {
-        // Verify Firebase token
-        const decodedToken = await verifyToken(req);
-        console.log('Token verified for user:', decodedToken.uid);
+        const url = new URL(req.url);
+        const query = url.searchParams.get('query');
 
-        const { query } = req.query;
         if (!query) {
-            return res.status(400).json({ error: 'Query parameter is required' });
+            return new Response(
+                JSON.stringify({ error: 'Query parameter is required' }),
+                { status: 400, headers }
+            );
         }
 
-        console.log('Processing search query:', query);
+        // Verify Firebase token
+        const authorization = req.headers.get('authorization');
+        await verifyToken(authorization);
 
         const access_token = process.env.FACEBOOK_ACCESS_TOKEN;
         const ad_account_id = process.env.FACEBOOK_AD_ACCOUNT_ID;
 
         if (!access_token || !ad_account_id) {
-            console.error('Missing required environment variables');
-            return res.status(500).json({ error: 'Server configuration error' });
+            return new Response(
+                JSON.stringify({ error: 'Server configuration error' }),
+                { status: 500, headers }
+            );
         }
 
         // Search for interests
@@ -105,10 +106,11 @@ export default async function handler(req, res) {
             }
         });
 
-        console.log('Facebook API search response received');
-
         if (!searchResponse.data.data || searchResponse.data.data.length === 0) {
-            return res.json({ data: [] });
+            return new Response(
+                JSON.stringify({ data: [] }),
+                { status: 200, headers }
+            );
         }
 
         const results = searchResponse.data.data;
@@ -143,7 +145,6 @@ export default async function handler(req, res) {
                         id: result.id
                     };
                 } catch (error) {
-                    console.error('Error getting audience size for interest:', result.name, error);
                     return {
                         name: result.name || 'N/A',
                         audience_size: 0,
@@ -158,15 +159,18 @@ export default async function handler(req, res) {
             interests.push(...batchResults);
         }
 
-        console.log('Sending response with interests count:', interests.length);
-        res.json({ data: interests });
+        return new Response(
+            JSON.stringify({ data: interests }),
+            { status: 200, headers }
+        );
     } catch (error) {
         console.error('API Error:', error);
-        const errorMessage = error.response?.data?.error?.message || error.message;
-        res.status(error.response?.status || 500).json({ 
-            error: 'Failed to fetch interests',
-            message: errorMessage,
-            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
+        return new Response(
+            JSON.stringify({ 
+                error: 'Failed to fetch interests',
+                message: error.message
+            }),
+            { status: 500, headers }
+        );
     }
 }
