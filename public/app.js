@@ -94,14 +94,32 @@ async function performSearch(query) {
 
     try {
         const idToken = await currentUser.getIdToken();
+        
+        // Debug information
+        console.log('Current location:', {
+            hostname: window.location.hostname,
+            protocol: window.location.protocol,
+            host: window.location.host,
+            pathname: window.location.pathname
+        });
+
+        // Handle both localhost and production URLs
         let apiUrl;
         if (window.location.hostname === 'localhost') {
             apiUrl = `http://localhost:3001/api/interests?query=${encodeURIComponent(query)}`;
         } else {
-            apiUrl = `${window.location.protocol}//${window.location.host}/api/interests?query=${encodeURIComponent(query)}`;
+            // For Vercel deployment - use absolute URL
+            apiUrl = new URL('/api/interests', window.location.href).toString();
+            apiUrl += `?query=${encodeURIComponent(query)}`;
         }
             
-        console.log('Calling API URL:', apiUrl); // Debug log
+        console.log('Attempting API call to:', apiUrl);
+        console.log('With headers:', {
+            Authorization: 'Bearer [token]', // Don't log the actual token
+            Accept: 'application/json',
+            'Content-Type': 'application/json'
+        });
+
         const response = await fetch(apiUrl, {
             method: 'GET',
             headers: {
@@ -114,8 +132,10 @@ async function performSearch(query) {
         if (!response.ok) {
             const errorText = await response.text();
             console.error('API Error Response:', {
+                url: apiUrl,
                 status: response.status,
                 statusText: response.statusText,
+                headers: Object.fromEntries(response.headers.entries()),
                 body: errorText
             });
             throw new Error(`Failed to fetch interests: ${response.status} ${response.statusText}`);

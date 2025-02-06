@@ -41,11 +41,16 @@ async function verifyToken(req) {
     }
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
+    // Log request details
     console.log('API Request received:', {
         method: req.method,
         query: req.query,
-        headers: req.headers
+        path: req.url,
+        headers: {
+            ...req.headers,
+            authorization: req.headers.authorization ? '[REDACTED]' : undefined
+        }
     });
 
     // Enable CORS
@@ -164,4 +169,4 @@ module.exports = async (req, res) => {
             details: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
-};
+}
