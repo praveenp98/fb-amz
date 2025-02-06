@@ -94,18 +94,33 @@ async function performSearch(query) {
 
     try {
         const idToken = await currentUser.getIdToken();
-        const apiUrl = window.location.hostname === 'localhost' 
-            ? `http://localhost:3001/api/interests?query=${encodeURIComponent(query)}`
-            : `/api/interests?query=${encodeURIComponent(query)}`;
+        let apiUrl;
+        if (window.location.hostname === 'localhost') {
+            apiUrl = `http://localhost:3001/api/interests?query=${encodeURIComponent(query)}`;
+        } else {
+            apiUrl = `${window.location.protocol}//${window.location.host}/api/interests?query=${encodeURIComponent(query)}`;
+        }
             
+        console.log('Calling API URL:', apiUrl); // Debug log
         const response = await fetch(apiUrl, {
+            method: 'GET',
             headers: {
-                'Authorization': idToken
+                'Authorization': idToken,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
             }
         });
 
-        if (!response.ok) throw new Error('Failed to fetch interests');
-        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API Error Response:', {
+                status: response.status,
+                statusText: response.statusText,
+                body: errorText
+            });
+            throw new Error(`Failed to fetch interests: ${response.status} ${response.statusText}`);
+        }
+
         const data = await response.json();
         
         if (data && data.data && Array.isArray(data.data)) {

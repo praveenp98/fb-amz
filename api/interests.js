@@ -3,14 +3,20 @@ const axios = require('axios');
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-        }),
-        storageBucket: process.env.FIREBASE_STORAGE_BUCKET
-    });
+    try {
+        admin.initializeApp({
+            credential: admin.credential.cert({
+                projectId: process.env.FIREBASE_PROJECT_ID,
+                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+            }),
+            storageBucket: process.env.FIREBASE_STORAGE_BUCKET
+        });
+        console.log('Firebase Admin initialized successfully');
+    } catch (error) {
+        console.error('Firebase Admin initialization error:', error);
+        throw error;
+    }
 }
 
 const FACEBOOK_API_VERSION = 'v18.0';
@@ -24,12 +30,24 @@ const axiosInstance = axios.create({
 async function verifyToken(req) {
     const idToken = req.headers.authorization;
     if (!idToken) {
+        console.error('No authorization token provided');
         throw new Error('No token provided');
     }
-    return await admin.auth().verifyIdToken(idToken);
+    try {
+        return await admin.auth().verifyIdToken(idToken);
+    } catch (error) {
+        console.error('Token verification failed:', error);
+        throw error;
+    }
 }
 
 module.exports = async (req, res) => {
+    console.log('API Request received:', {
+        method: req.method,
+        query: req.query,
+        headers: req.headers
+    });
+
     // Enable CORS
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -52,15 +70,23 @@ module.exports = async (req, res) => {
 
     try {
         // Verify Firebase token
-        await verifyToken(req);
+        const decodedToken = await verifyToken(req);
+        console.log('Token verified for user:', decodedToken.uid);
 
         const { query } = req.query;
         if (!query) {
             return res.status(400).json({ error: 'Query parameter is required' });
         }
 
+        console.log('Processing search query:', query);
+
         const access_token = process.env.FACEBOOK_ACCESS_TOKEN;
         const ad_account_id = process.env.FACEBOOK_AD_ACCOUNT_ID;
+
+        if (!access_token || !ad_account_id) {
+            console.error('Missing required environment variables');
+            return res.status(500).json({ error: 'Server configuration error' });
+        }
 
         // Search for interests
         const searchResponse = await axiosInstance.get(`${FACEBOOK_API_BASE_URL}/search`, {
@@ -73,6 +99,8 @@ module.exports = async (req, res) => {
                 disable_scoping: true
             }
         });
+
+        console.log('Facebook API search response received');
 
         if (!searchResponse.data.data || searchResponse.data.data.length === 0) {
             return res.json({ data: [] });
@@ -110,7 +138,7 @@ module.exports = async (req, res) => {
                         id: result.id
                     };
                 } catch (error) {
-                    console.error('Error getting audience size:', error);
+                    console.error('Error getting audience size for interest:', result.name, error);
                     return {
                         name: result.name || 'N/A',
                         audience_size: 0,
@@ -125,9 +153,15 @@ module.exports = async (req, res) => {
             interests.push(...batchResults);
         }
 
+        console.log('Sending response with interests count:', interests.length);
         res.json({ data: interests });
     } catch (error) {
         console.error('API Error:', error);
-        res.status(500).json({ error: 'Failed to fetch interests' });
+        const errorMessage = error.response?.data?.error?.message || error.message;
+        res.status(error.response?.status || 500).json({ 
+            error: 'Failed to fetch interests',
+            message: errorMessage,
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 };
