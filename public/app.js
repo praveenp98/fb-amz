@@ -103,27 +103,19 @@ async function performSearch(query) {
             pathname: window.location.pathname
         });
 
-        // Handle both localhost and production URLs
-        let apiUrl;
-        if (window.location.hostname === 'localhost') {
-            apiUrl = `http://localhost:3001/api/interests?query=${encodeURIComponent(query)}`;
-        } else {
-            // For Vercel deployment - use absolute URL
-            apiUrl = new URL('/api/interests', window.location.href).toString();
-            apiUrl += `?query=${encodeURIComponent(query)}`;
-        }
+        // Improved URL construction
+        const baseUrl = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3001' 
+            : window.location.origin;
+        
+        const apiUrl = `${baseUrl}/api/interests?query=${encodeURIComponent(query)}`;
             
         console.log('Attempting API call to:', apiUrl);
-        console.log('With headers:', {
-            Authorization: 'Bearer [token]', // Don't log the actual token
-            Accept: 'application/json',
-            'Content-Type': 'application/json'
-        });
 
         const response = await fetch(apiUrl, {
             method: 'GET',
             headers: {
-                'Authorization': idToken,
+                'Authorization': `Bearer ${idToken}`,
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             }
@@ -145,7 +137,9 @@ async function performSearch(query) {
         
         if (data && data.data && Array.isArray(data.data)) {
             allInterests = data.data.map(interest => ({
-                ...interest,
+                name: interest.name,
+                topic: interest.topic,
+                path: interest.path,
                 audience_size: parseInt(interest.audience_size) || 0
             }));
         } else {
