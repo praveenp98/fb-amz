@@ -1,3 +1,22 @@
+// Initialize Firebase with configuration from backend
+async function initializeFirebase() {
+    try {
+        const response = await fetch('/api/config');
+        if (!response.ok) {
+            throw new Error('Failed to fetch Firebase configuration');
+        }
+        const config = await response.json();
+        firebase.initializeApp(config);
+        console.log('Firebase initialized successfully');
+    } catch (error) {
+        console.error('Error initializing Firebase:', error);
+        showError('Failed to initialize application. Please try again later.');
+    }
+}
+
+// Call initialize function when the page loads
+document.addEventListener('DOMContentLoaded', initializeFirebase);
+
 const auth = firebase.auth();
 const logoutBtn = document.getElementById('logout-btn');
 const searchInput = document.getElementById('search-input');
@@ -103,19 +122,27 @@ async function performSearch(query) {
             pathname: window.location.pathname
         });
 
-        // Improved URL construction
-        const baseUrl = window.location.hostname === 'localhost' 
-            ? 'http://localhost:3001' 
-            : window.location.origin;
-        
-        const apiUrl = `${baseUrl}/api/interests?query=${encodeURIComponent(query)}`;
+        // Handle both localhost and production URLs
+        let apiUrl;
+        if (window.location.hostname === 'localhost') {
+            apiUrl = `http://localhost:3001/api/interests?query=${encodeURIComponent(query)}`;
+        } else {
+            // For Vercel deployment - use absolute URL
+            apiUrl = new URL('/api/interests', window.location.href).toString();
+            apiUrl += `?query=${encodeURIComponent(query)}`;
+        }
             
         console.log('Attempting API call to:', apiUrl);
+        console.log('With headers:', {
+            Authorization: 'Bearer [token]', // Don't log the actual token
+            Accept: 'application/json',
+            'Content-Type': 'application/json'
+        });
 
         const response = await fetch(apiUrl, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${idToken}`,
+                'Authorization': idToken,
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             }
@@ -137,9 +164,7 @@ async function performSearch(query) {
         
         if (data && data.data && Array.isArray(data.data)) {
             allInterests = data.data.map(interest => ({
-                name: interest.name,
-                topic: interest.topic,
-                path: interest.path,
+                ...interest,
                 audience_size: parseInt(interest.audience_size) || 0
             }));
         } else {

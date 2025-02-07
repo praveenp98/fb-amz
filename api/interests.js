@@ -2,14 +2,35 @@ const admin = require('firebase-admin');
 const axios = require('axios');
 require('dotenv').config();
 
+// Function to validate environment variables
+function validateEnvVariables() {
+    const required = [
+        'FIREBASE_PROJECT_ID',
+        'FIREBOOK_CLIENT_EMAIL',
+        'FIREBASE_PRIVATE_KEY',
+        'FIREBASE_STORAGE_BUCKET',
+        'FACEBOOK_ACCESS_TOKEN',
+        'FACEBOOK_AD_ACCOUNT_ID'
+    ];
+
+    const missing = required.filter(key => !process.env[key]);
+    if (missing.length > 0) {
+        throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    }
+}
+
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
     try {
+        validateEnvVariables();
+        
+        // Initialize with environment variables
         admin.initializeApp({
             credential: admin.credential.cert({
                 projectId: process.env.FIREBASE_PROJECT_ID,
                 clientEmail: process.env.FIREBOOK_CLIENT_EMAIL,
-                privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+                // Handle escaped newlines in the private key
+                privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
             }),
             storageBucket: process.env.FIREBASE_STORAGE_BUCKET
         });

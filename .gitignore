@@ -1,21 +1,50 @@
 # Dependencies
 node_modules/
-package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Environment variables
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
 
 # Firebase
 firebase-debug.log
 firebase-debug.*.log
 .firebase/
+firebase-adminsdk.json
+**/service-account.json
+**/config.js
 
 # IDE
-.vscode/
 .idea/
+.vscode/
+*.swp
+*.swo
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Build
+dist/
+build/
+.next/
+out/
+.vercel/
+
+# Logs
+logs/
+*.log
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+*.pem
+.cache/
+.temp/
